@@ -14,7 +14,255 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clips: {
+        Row: {
+          aspect_ratio: string | null
+          created_at: string
+          end_time: number
+          export_url: string | null
+          id: string
+          name: string
+          start_time: number
+          timeline_json: Json | null
+          updated_at: string
+          upload_id: string
+          user_id: string
+        }
+        Insert: {
+          aspect_ratio?: string | null
+          created_at?: string
+          end_time: number
+          export_url?: string | null
+          id?: string
+          name: string
+          start_time: number
+          timeline_json?: Json | null
+          updated_at?: string
+          upload_id: string
+          user_id: string
+        }
+        Update: {
+          aspect_ratio?: string | null
+          created_at?: string
+          end_time?: number
+          export_url?: string | null
+          id?: string
+          name?: string
+          start_time?: number
+          timeline_json?: Json | null
+          updated_at?: string
+          upload_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clips_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cuts: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          cut_type: string | null
+          end_time: number | null
+          id: string
+          start_time: number
+          upload_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          cut_type?: string | null
+          end_time?: number | null
+          id?: string
+          start_time: number
+          upload_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          cut_type?: string | null
+          end_time?: number | null
+          id?: string
+          start_time?: number
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cuts_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_type: string
+          started_at: string | null
+          status: string | null
+          upload_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type: string
+          started_at?: string | null
+          status?: string | null
+          upload_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type?: string
+          started_at?: string | null
+          status?: string | null
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          artist_name: string
+          created_at: string
+          first_name: string
+          id: string
+          instagram_link: string | null
+          last_name: string
+          theme_preference: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artist_name: string
+          created_at?: string
+          first_name: string
+          id?: string
+          instagram_link?: string | null
+          last_name: string
+          theme_preference?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artist_name?: string
+          created_at?: string
+          first_name?: string
+          id?: string
+          instagram_link?: string | null
+          last_name?: string
+          theme_preference?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      uploads: {
+        Row: {
+          created_at: string
+          duration_seconds: number | null
+          file_path: string
+          file_size: number
+          filename: string
+          id: string
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number | null
+          file_path: string
+          file_size: number
+          filename: string
+          id?: string
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number | null
+          file_path?: string
+          file_size?: number
+          filename?: string
+          id?: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_survey: {
+        Row: {
+          completed_at: string | null
+          country: string | null
+          created_at: string
+          genres: string[] | null
+          how_found: string | null
+          id: string
+          newsletter_optin: boolean | null
+          platforms: string[] | null
+          posting_frequency: string | null
+          role: string | null
+          set_length: string | null
+          timezone: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          country?: string | null
+          created_at?: string
+          genres?: string[] | null
+          how_found?: string | null
+          id?: string
+          newsletter_optin?: boolean | null
+          platforms?: string[] | null
+          posting_frequency?: string | null
+          role?: string | null
+          set_length?: string | null
+          timezone?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          country?: string | null
+          created_at?: string
+          genres?: string[] | null
+          how_found?: string | null
+          id?: string
+          newsletter_optin?: boolean | null
+          platforms?: string[] | null
+          posting_frequency?: string | null
+          role?: string | null
+          set_length?: string | null
+          timezone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

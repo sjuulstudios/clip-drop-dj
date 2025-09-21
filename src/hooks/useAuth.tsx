@@ -16,7 +16,12 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, userMetadata?: {
+    firstName: string;
+    lastName: string;
+    artistName: string;
+    instagramLink?: string;
+  }) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
 }
 
@@ -59,8 +64,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string, userMetadata?: {
+    firstName: string;
+    lastName: string;
+    artistName: string;
+    instagramLink?: string;
+  }) => {
+    const { error, data } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/onboarding`,
+        data: userMetadata
+      }
+    });
+    
+    if (!error && data.user && userMetadata) {
+      // Create profile record
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          user_id: data.user.id,
+          first_name: userMetadata.firstName,
+          last_name: userMetadata.lastName,
+          artist_name: userMetadata.artistName,
+          instagram_link: userMetadata.instagramLink || null
+        }]);
+      
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+      }
+    }
+    
     return { error };
   };
 
