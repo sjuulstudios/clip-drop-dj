@@ -4,22 +4,27 @@ import { api } from '@/lib/api';
 export interface Upload {
   id: string;
   filename: string;
-  bytes: number;
+  file_path: string;
+  file_size: number;
   duration_seconds?: number;
-  status: 'uploaded' | 'processing' | 'done' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;
-  error_message?: string;
   jobs?: Array<{
     id: string;
-    type: 'detect' | 'split';
-    status: 'queued' | 'processing' | 'done' | 'failed';
+    job_type: 'detect' | 'split';
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    created_at: string;
+    started_at?: string;
+    completed_at?: string;
     error_message?: string;
   }>;
   cuts?: Array<{
     id: string;
-    time_seconds: number;
+    start_time: number;
+    end_time?: number;
     confidence?: number;
+    cut_type?: string;
   }>;
 }
 

@@ -1,149 +1,152 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-// This is a simplified version - in production you'd use a worker service
-// with ffmpeg and librosa for actual audio processing
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    )
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
-    const { uploadId } = await req.json()
+    const { uploadId } = await req.json();
 
     if (!uploadId) {
-      return new Response(
-        JSON.stringify({ error: 'Upload ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error("Upload ID is required");
     }
 
-    // Update job status to processing
-    await supabase
-      .from('jobs')
-      .update({ 
-        status: 'processing',
-        started_at: new Date().toISOString()
-      })
-      .eq('upload_id', uploadId)
-      .eq('type', 'detect')
-
-    // Simulate audio processing - in production this would:
-    // 1. Download audio file from storage
-    // 2. Extract audio using ffmpeg
-    // 3. Analyze using librosa for drop detection
-    // 4. Generate cuts.csv and clips if needed
-    // 5. Upload results to storage
-
-    // For demo purposes, simulate some processing time and create mock cuts
-    await new Promise(resolve => setTimeout(resolve, 5000)) // 5 second delay
-
-    const mockCuts = [
-      { time_seconds: 45.2, confidence: 0.9 },
-      { time_seconds: 125.7, confidence: 0.8 },
-      { time_seconds: 234.1, confidence: 0.95 },
-      { time_seconds: 312.8, confidence: 0.7 },
-      { time_seconds: 445.3, confidence: 0.85 }
-    ]
-
-    // Insert cuts into database
-    const cutsData = mockCuts.map(cut => ({
-      upload_id: uploadId,
-      time_seconds: cut.time_seconds,
-      confidence: cut.confidence
-    }))
-
-    await supabase
-      .from('cuts')
-      .insert(cutsData)
-
-    // Create mock CSV content
-    const csvContent = 'time_seconds,time_formatted,confidence\n' + 
-      mockCuts.map(cut => {
-        const minutes = Math.floor(cut.time_seconds / 60)
-        const seconds = (cut.time_seconds % 60).toFixed(3)
-        const formatted = `${minutes}:${seconds.padStart(6, '0')}`
-        return `${cut.time_seconds},${formatted},${cut.confidence}`
-      }).join('\n')
-
-    // Upload CSV to storage
-    const { error: csvError } = await supabase.storage
-      .from('dj-sets')
-      .upload(`outputs/${uploadId}/cuts.csv`, csvContent, {
-        contentType: 'text/csv',
-        upsert: true
-      })
-
-    if (csvError) {
-      console.error('Error uploading CSV:', csvError)
-    }
-
-    // Update upload and job status
-    await supabase
+    // Verify upload exists
+    const { data: upload, error: uploadError } = await supabaseClient
       .from('uploads')
-      .update({ 
-        status: 'done',
-        duration_seconds: Math.max(...mockCuts.map(c => c.time_seconds)) + 60
-      })
+      .select('*')
       .eq('id', uploadId)
+      .single();
 
-    await supabase
-      .from('jobs')
-      .update({ 
-        status: 'done',
-        finished_at: new Date().toISOString()
-      })
-      .eq('upload_id', uploadId)
-      .eq('type', 'detect')
-
-    return new Response(
-      JSON.stringify({
-        status: 'success',
-        message: 'Processing completed',
-        cuts: mockCuts.length
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  } catch (error) {
-    console.error('Error in process-audio function:', error)
-    
-    // Update job status to failed
-    const { uploadId } = await req.json().catch(() => ({}))
-    if (uploadId) {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      )
-      
-      await supabase
-        .from('jobs')
-        .update({ 
-          status: 'failed',
-          error_message: error.message,
-          finished_at: new Date().toISOString()
-        })
-        .eq('upload_id', uploadId)
-        .eq('type', 'detect')
+    if (uploadError || !upload) {
+      throw new Error("Upload not found");
     }
 
+    // Create a processing job
+    const { data: job, error: jobError } = await supabaseClient
+      .from('jobs')
+      .insert({
+        upload_id: uploadId,
+        job_type: 'detect',
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      throw new Error(`Failed to create processing job: ${jobError.message}`);
+    }
+
+    // Update upload status to processing
+    await supabaseClient
+      .from('uploads')
+      .update({ status: 'processing' })
+      .eq('id', uploadId);
+
+    // In a real implementation, you would trigger your audio processing worker here
+    // For now, we'll simulate processing with a background task
+    setTimeout(async () => {
+      try {
+        // Update job status to processing
+        await supabaseClient
+          .from('jobs')
+          .update({ 
+            status: 'processing',
+            started_at: new Date().toISOString()
+          })
+          .eq('id', job.id);
+
+        // Simulate processing time
+        setTimeout(async () => {
+          try {
+            // Create some dummy cuts for demonstration
+            const dummyCuts = [
+              { upload_id: uploadId, start_time: 30.5, end_time: 32.0, confidence: 0.95, cut_type: 'drop' },
+              { upload_id: uploadId, start_time: 125.2, end_time: 127.1, confidence: 0.87, cut_type: 'drop' },
+              { upload_id: uploadId, start_time: 240.8, end_time: 242.5, confidence: 0.92, cut_type: 'drop' }
+            ];
+
+            // Insert cuts
+            await supabaseClient
+              .from('cuts')
+              .insert(dummyCuts);
+
+            // Update job as completed
+            await supabaseClient
+              .from('jobs')
+              .update({ 
+                status: 'completed',
+                completed_at: new Date().toISOString()
+              })
+              .eq('id', job.id);
+
+            // Update upload as completed
+            await supabaseClient
+              .from('uploads')
+              .update({ 
+                status: 'completed',
+                duration_seconds: 300 // Mock 5 minute duration
+              })
+              .eq('id', uploadId);
+
+          } catch (error) {
+            console.error('Processing simulation error:', error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown processing error";
+            
+            // Mark job as failed
+            await supabaseClient
+              .from('jobs')
+              .update({ 
+                status: 'failed',
+                completed_at: new Date().toISOString(),
+                error_message: errorMessage
+              })
+              .eq('id', job.id);
+
+            // Mark upload as failed
+            await supabaseClient
+              .from('uploads')
+              .update({ status: 'failed' })
+              .eq('id', uploadId);
+          }
+        }, 8000); // Complete after 8 seconds
+      } catch (error) {
+        console.error('Processing start error:', error);
+      }
+    }, 1000); // Start processing after 1 second
+
     return new Response(
-      JSON.stringify({ error: 'Processing failed' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      JSON.stringify({ 
+        success: true,
+        jobId: job.id,
+        message: "Audio processing started"
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
+  } catch (error) {
+    console.error("Process audio error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      }
+    );
   }
-})
+});

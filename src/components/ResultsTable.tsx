@@ -3,16 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, Play, Share, Instagram, Facebook } from "lucide-react";
-
-// Mock data for demonstration
-const mockResults = [
-  { id: 1, time: "01:23.450", seconds: 83.45, confidence: 0.95, clipName: "Drop_01_Bass_House.mp4" },
-  { id: 2, time: "03:45.210", seconds: 225.21, confidence: 0.87, clipName: "Drop_02_Tech_House.mp4" },
-  { id: 3, time: "07:12.890", seconds: 432.89, confidence: 0.92, clipName: "Drop_03_Progressive.mp4" },
-  { id: 4, time: "10:34.120", seconds: 634.12, confidence: 0.89, clipName: "Drop_04_Electro.mp4" },
-  { id: 5, time: "13:56.780", seconds: 836.78, confidence: 0.94, clipName: "Drop_05_Techno.mp4" },
-  { id: 6, time: "17:23.340", seconds: 1043.34, confidence: 0.91, clipName: "Drop_06_Deep_House.mp4" },
-];
+import type { Upload } from "@/hooks/useUploads";
 
 const SocialIcon = ({ platform }: { platform: string }) => {
   const icons = {
@@ -33,7 +24,71 @@ const SocialIcon = ({ platform }: { platform: string }) => {
   return icons[platform as keyof typeof icons] || <Share className="h-4 w-4" />;
 };
 
-const ResultsTable = () => {
+interface ResultsTableProps {
+  upload: Upload;
+  downloadUrls?: { csv?: string; zip?: string } | null;
+}
+
+const ResultsTable = ({ upload, downloadUrls }: ResultsTableProps) => {
+  const cuts = upload.cuts || [];
+
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = (seconds % 60).toFixed(3);
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.padStart(6, '0')}`;
+  };
+
+  const handleDownloadCSV = () => {
+    if (downloadUrls?.csv) {
+      window.open(downloadUrls.csv, '_blank');
+    }
+  };
+
+  const handleDownloadZIP = () => {
+    if (downloadUrls?.zip) {
+      window.open(downloadUrls.zip, '_blank');
+    }
+  };
+
+  const generateShareUrl = (platform: string, cut: any) => {
+    const baseUrl = window.location.origin;
+    const clipUrl = `${baseUrl}/clip/${upload.id}/${cut.id}`;
+    
+    switch (platform) {
+      case 'instagram':
+        // Instagram doesn't support direct URL sharing, so we'll copy to clipboard
+        navigator.clipboard.writeText(clipUrl);
+        return;
+      case 'tiktok':
+        navigator.clipboard.writeText(clipUrl);
+        return;
+      case 'facebook':
+        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(clipUrl)}`;
+      case 'whatsapp':
+        return `https://wa.me/?text=${encodeURIComponent(`Check out this drop from my DJ set: ${clipUrl}`)}`;
+      default:
+        navigator.clipboard.writeText(clipUrl);
+        return;
+    }
+  };
+
+  const handleShare = (platform: string, cut: any) => {
+    const shareUrl = generateShareUrl(platform, cut);
+    if (shareUrl) {
+      window.open(shareUrl, '_blank', 'width=600,height=400');
+    }
+  };
+
+  if (cuts.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <p className="text-muted-foreground">No drops detected in this upload.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Actions */}
@@ -41,15 +96,23 @@ const ResultsTable = () => {
         <div>
           <h2 className="text-2xl font-bold text-foreground">Detected Drops</h2>
           <p className="text-muted-foreground">
-            Found {mockResults.length} perfect moments in your set
+            Found {cuts.length} perfect moments in your set
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button 
+            variant="outline" 
+            onClick={handleDownloadCSV}
+            disabled={!downloadUrls?.csv}
+          >
             <Download className="mr-2 h-4 w-4" />
             Download CSV
           </Button>
-          <Button className="bg-brand text-brand-foreground hover:bg-brand/90">
+          <Button 
+            className="bg-brand text-textOnBrand hover:bg-brand/90"
+            onClick={handleDownloadZIP}
+            disabled={!downloadUrls?.zip}
+          >
             <Download className="mr-2 h-4 w-4" />
             Download All Clips (ZIP)
           </Button>
@@ -61,7 +124,7 @@ const ResultsTable = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Clip Timeline</span>
-            <Badge variant="secondary">{mockResults.length} clips</Badge>
+            <Badge variant="secondary">{cuts.length} clips</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -69,7 +132,7 @@ const ResultsTable = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Time</TableHead>
-                <TableHead>Clip Name</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Confidence</TableHead>
                 <TableHead>Preview</TableHead>
                 <TableHead>Share</TableHead>
@@ -77,43 +140,65 @@ const ResultsTable = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockResults.map((result) => (
-                <TableRow key={result.id}>
+              {cuts.map((cut, index) => (
+                <TableRow key={cut.id}>
                   <TableCell className="font-mono">
-                    {result.time}
+                    {formatTime(cut.start_time)}
                   </TableCell>
-                  <TableCell>{result.clipName}</TableCell>
+                  <TableCell className="capitalize">
+                    {cut.cut_type || 'drop'}
+                  </TableCell>
                   <TableCell>
                     <Badge 
-                      variant={result.confidence > 0.9 ? "default" : "secondary"}
-                      className={result.confidence > 0.9 ? "bg-green-100 text-green-800" : ""}
+                      variant={(cut.confidence || 0) > 0.9 ? "default" : "secondary"}
+                      className={(cut.confidence || 0) > 0.9 ? "bg-green-100 text-green-800" : ""}
                     >
-                      {(result.confidence * 100).toFixed(0)}%
+                      {((cut.confidence || 0) * 100).toFixed(0)}%
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" disabled>
                       <Play className="h-3 w-3" />
                     </Button>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="p-1 h-7 w-7">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="p-1 h-7 w-7"
+                        onClick={() => handleShare('instagram', cut)}
+                      >
                         <SocialIcon platform="instagram" />
                       </Button>
-                      <Button size="sm" variant="outline" className="p-1 h-7 w-7">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="p-1 h-7 w-7"
+                        onClick={() => handleShare('tiktok', cut)}
+                      >
                         <SocialIcon platform="tiktok" />
                       </Button>
-                      <Button size="sm" variant="outline" className="p-1 h-7 w-7">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="p-1 h-7 w-7"
+                        onClick={() => handleShare('facebook', cut)}
+                      >
                         <SocialIcon platform="facebook" />
                       </Button>
-                      <Button size="sm" variant="outline" className="p-1 h-7 w-7">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="p-1 h-7 w-7"
+                        onClick={() => handleShare('whatsapp', cut)}
+                      >
                         <SocialIcon platform="whatsapp" />
                       </Button>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" disabled>
                       <Download className="h-3 w-3" />
                     </Button>
                   </TableCell>

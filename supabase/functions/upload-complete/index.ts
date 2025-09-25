@@ -1,101 +1,76 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    )
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    // Get authenticated user
+    const authHeader = req.headers.get("Authorization")!;
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData } = await supabaseClient.auth.getUser(token);
+    const user = userData.user;
+
+    if (!user) {
+      throw new Error("User not authenticated");
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const { uploadId, filePath, filename, fileSize } = await req.json();
 
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const { uploadId, filePath, filename, fileSize } = await req.json()
-
+    // Validate input
     if (!uploadId || !filePath || !filename || !fileSize) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error("Missing required fields: uploadId, filePath, filename, fileSize");
     }
 
     // Create upload record in database
-    const { data: upload, error: uploadError } = await supabase
+    const { data: upload, error: uploadError } = await supabaseClient
       .from('uploads')
       .insert({
         id: uploadId,
         user_id: user.id,
         filename,
-        bytes: fileSize,
-        s3_input_key: filePath,
-        s3_output_prefix: `outputs/${user.id}/${uploadId}/`,
-        status: 'uploaded'
+        file_path: filePath,
+        file_size: fileSize,
+        status: 'pending'
       })
       .select()
-      .single()
+      .single();
 
     if (uploadError) {
-      console.error('Error creating upload record:', uploadError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to create upload record' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Create detection job
-    const { error: jobError } = await supabase
-      .from('jobs')
-      .insert({
-        upload_id: uploadId,
-        type: 'detect',
-        status: 'queued'
-      })
-
-    if (jobError) {
-      console.error('Error creating job:', jobError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to create processing job' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error(`Failed to create upload record: ${uploadError.message}`);
     }
 
     return new Response(
-      JSON.stringify({
-        uploadId,
-        status: 'success',
-        message: 'Upload completed and processing started'
+      JSON.stringify({ 
+        success: true,
+        upload 
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error('Error in upload-complete function:', error)
+    console.error("Upload complete error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      JSON.stringify({ error: errorMessage }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
-})
+});

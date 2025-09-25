@@ -1,99 +1,80 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    )
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    // Get authenticated user
+    const authHeader = req.headers.get("Authorization")!;
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData } = await supabaseClient.auth.getUser(token);
+    const user = userData.user;
+
+    if (!user) {
+      throw new Error("User not authenticated");
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const url = new URL(req.url)
-    const uploadId = url.pathname.split('/').pop()
+    // Get upload ID from URL path
+    const url = new URL(req.url);
+    const uploadId = url.pathname.split('/').pop();
 
     if (!uploadId) {
-      return new Response(
-        JSON.stringify({ error: 'Upload ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error("Upload ID is required");
     }
 
-    // Get upload details with cuts and jobs
-    const { data: upload, error } = await supabase
+    // Fetch upload with jobs and cuts
+    const { data: upload, error: uploadError } = await supabaseClient
       .from('uploads')
       .select(`
         *,
-        jobs (
-          id,
-          type,
-          status,
-          created_at,
-          started_at,
-          finished_at,
-          error_message
-        ),
-        cuts (
-          id,
-          time_seconds,
-          confidence
-        )
+        jobs (*),
+        cuts (*)
       `)
       .eq('id', uploadId)
       .eq('user_id', user.id)
-      .single()
+      .single();
 
-    if (error) {
-      console.error('Error fetching upload:', error)
-      return new Response(
-        JSON.stringify({ error: 'Upload not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (uploadError) {
+      throw new Error(`Failed to fetch upload: ${uploadError.message}`);
     }
 
-    // Generate download URLs if processing is complete
-    let downloadUrls = null
-    if (upload.status === 'done' && upload.s3_output_prefix) {
-      try {
-        const { data: csvUrl } = await supabase.storage
-          .from('dj-sets')
-          .createSignedUrl(`${upload.s3_output_prefix}cuts.csv`, 3600)
+    if (!upload) {
+      throw new Error("Upload not found or access denied");
+    }
 
-        const { data: zipUrl } = await supabase.storage
-          .from('dj-sets')
-          .createSignedUrl(`${upload.s3_output_prefix}clips.zip`, 3600)
+    // Generate download URLs for files
+    let downloadUrls: { csv?: string; zip?: string } = {};
 
-        downloadUrls = {
-          csv: csvUrl?.signedUrl,
-          zip: zipUrl?.signedUrl
-        }
-      } catch (urlError) {
-        console.error('Error generating download URLs:', urlError)
+    if (upload.status === 'completed') {
+      // Try to get CSV download URL
+      const { data: csvUrl } = await supabaseClient.storage
+        .from('dj-sets')
+        .createSignedUrl(`${upload.file_path}.csv`, 3600); // 1 hour expiry
+
+      if (csvUrl) {
+        downloadUrls.csv = csvUrl.signedUrl;
+      }
+
+      // Try to get ZIP download URL  
+      const { data: zipUrl } = await supabaseClient.storage
+        .from('dj-sets')
+        .createSignedUrl(`${upload.file_path}.zip`, 3600); // 1 hour expiry
+
+      if (zipUrl) {
+        downloadUrls.zip = zipUrl.signedUrl;
       }
     }
 
@@ -102,13 +83,20 @@ Deno.serve(async (req) => {
         upload,
         downloadUrls 
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error('Error in get-upload-detail function:', error)
+    console.error("Get upload detail error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      JSON.stringify({ error: errorMessage }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
-})
+});
