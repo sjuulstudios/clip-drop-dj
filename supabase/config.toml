@@ -24,3 +24,30 @@ pop3_port = 54326
 enabled = true
 port = 54327
 file_size_limit = "50MiB"
+
+[functions.process-audio]
+verify_jwt = false
+
+[functions.upload-presign]
+verify_jwt = true
+
+[functions.upload-complete]
+verify_jwt = true
+
+[functions.get-uploads]
+verify_jwt = true
+
+[functions.get-upload-detail]
+verify_jwt = true
+
+[functions.auth-session-validate]
+verify_jwt = true
+
+[functions.create-checkout]
+verify_jwt = true
+
+[functions.check-subscription]
+verify_jwt = true
+
+[functions.customer-portal]
+verify_jwt = true
