@@ -1,19 +1,25 @@
 import Header from "@/components/Header";
 import ResultsTable from "@/components/ResultsTable";
+import TimelineEditor from "@/components/Timeline/TimelineEditor";
+import ClipManager from "@/components/ClipManager/ClipManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Clock, FileAudio, TrendingUp, Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, Clock, FileAudio, TrendingUp, Loader2, Scissors } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useUploadDetail } from "@/hooks/useUploads";
+import { useClips } from "@/hooks/useClips";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 const Results = () => {
   const { uploadId } = useParams<{ uploadId: string }>();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { upload, downloadUrls, loading, error } = useUploadDetail(uploadId || '');
+  const { createClip } = useClips(uploadId);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -75,6 +81,15 @@ const Results = () => {
         return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
       default:
         return <Badge variant="secondary">{upload.status}</Badge>;
+    }
+  };
+
+  const handleClipCreate = async (startTime: number, endTime: number, name: string) => {
+    try {
+      await createClip(uploadId!, name, startTime, endTime);
+      toast.success(`Clip "${name}" created successfully!`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create clip');
     }
   };
 
@@ -147,7 +162,28 @@ const Results = () => {
 
           {/* Results */}
           {upload.status === 'completed' ? (
-            <ResultsTable upload={upload} downloadUrls={downloadUrls} />
+            <Tabs defaultValue="timeline" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="timeline" className="flex items-center gap-2">
+                  <Scissors className="h-4 w-4" />
+                  Timeline Editor
+                </TabsTrigger>
+                <TabsTrigger value="clips">My Clips</TabsTrigger>
+                <TabsTrigger value="results">Detected Drops</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="timeline" className="space-y-6">
+                <TimelineEditor upload={upload} onClipCreate={handleClipCreate} />
+              </TabsContent>
+              
+              <TabsContent value="clips" className="space-y-6">
+                <ClipManager uploadId={upload.id} />
+              </TabsContent>
+              
+              <TabsContent value="results" className="space-y-6">
+                <ResultsTable upload={upload} downloadUrls={downloadUrls} />
+              </TabsContent>
+            </Tabs>
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
