@@ -1,19 +1,15 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
+import type { User, Session } from '@supabase/supabase-js';
 
-// For demo purposes - in production these would come from environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-interface User {
+interface AuthUser {
   id: string;
   email: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
+  session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, userMetadata?: {
@@ -40,18 +36,21 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Set up auth state listener first
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
       setUser(session?.user ? { id: session.user.id, email: session.user.email || '' } : null);
       setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Then get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
       setUser(session?.user ? { id: session.user.id, email: session.user.email || '' } : null);
       setLoading(false);
     });
@@ -74,26 +73,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       email, 
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/onboarding`,
+        emailRedirectTo: `https://39cd8577-dbca-4d3e-987d-de397cca23f3.lovableproject.com/onboarding`,
         data: userMetadata
       }
     });
     
     if (!error && data.user && userMetadata) {
-      // Create profile record
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
-          user_id: data.user.id,
-          first_name: userMetadata.firstName,
-          last_name: userMetadata.lastName,
-          artist_name: userMetadata.artistName,
-          instagram_link: userMetadata.instagramLink || null
-        }]);
-      
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-      }
+      // Defer profile creation to avoid conflicts
+      setTimeout(async () => {
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{
+              user_id: data.user.id,
+              first_name: userMetadata.firstName,
+              last_name: userMetadata.lastName,
+              artist_name: userMetadata.artistName,
+              instagram_link: userMetadata.instagramLink || null
+            }]);
+          
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+          }
+        } catch (err) {
+          console.error('Profile creation error:', err);
+        }
+      }, 100);
     }
     
     return { error };
@@ -105,6 +110,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value = {
     user,
+    session,
     loading,
     signIn,
     signUp,

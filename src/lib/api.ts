@@ -1,6 +1,6 @@
-import { supabase } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
-const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const SUPABASE_FUNCTIONS_URL = `https://bepfythffyyzvazxakvs.supabase.co/functions/v1`;
 
 // Helper function to make authenticated requests to Supabase Edge Functions
 export const makeAuthenticatedRequest = async (
