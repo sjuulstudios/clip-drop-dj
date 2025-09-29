@@ -78,27 +78,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     });
     
-    if (!error && data.user && userMetadata) {
-      // Defer profile creation to avoid conflicts
+    // Auto sign-in after successful signup
+    if (!error && data.user) {
+      // Wait a moment for the user to be created
       setTimeout(async () => {
         try {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([{
-              user_id: data.user.id,
-              first_name: userMetadata.firstName,
-              last_name: userMetadata.lastName,
-              artist_name: userMetadata.artistName,
-              instagram_link: userMetadata.instagramLink || null
-            }]);
+          // Attempt to sign in the user automatically
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
           
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
+          if (!signInError && userMetadata) {
+            // Create profile after successful auto sign-in
+            setTimeout(async () => {
+              try {
+                const { error: profileError } = await supabase
+                  .from('profiles')
+                  .insert([{
+                    user_id: data.user.id,
+                    first_name: userMetadata.firstName,
+                    last_name: userMetadata.lastName,
+                    artist_name: userMetadata.artistName,
+                    instagram_link: userMetadata.instagramLink || null
+                  }]);
+                
+                if (profileError) {
+                  console.error('Error creating profile:', profileError);
+                }
+              } catch (err) {
+                console.error('Profile creation error:', err);
+              }
+            }, 500);
           }
         } catch (err) {
-          console.error('Profile creation error:', err);
+          console.error('Auto sign-in error:', err);
         }
-      }, 100);
+      }, 1000);
     }
     
     return { error };

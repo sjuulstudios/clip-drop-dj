@@ -6,6 +6,7 @@ import { Upload, File, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useUploads } from "@/hooks/useUploads";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const UploadZone = () => {
   const [dragOver, setDragOver] = useState(false);
@@ -82,14 +83,51 @@ const UploadZone = () => {
         description: 'Your DJ set is now being processed for drop detection.',
       });
 
-      // Simulate processing time (in real implementation, you'd poll for status)
-      setTimeout(() => {
-        setUploadStatus('complete');
-        toast({
-          title: 'Processing complete',
-          description: 'Your DJ set has been analyzed! Check out the results.',
-        });
-      }, 8000);
+      // Poll for processing completion
+      const pollProcessing = async () => {
+        try {
+          const response = await fetch(`https://bepfythffyyzvazxakvs.supabase.co/functions/v1/get-upload-detail/${resultUploadId}`, {
+            headers: {
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            const upload = data.upload;
+            
+            if (upload?.status === 'completed') {
+              setUploadStatus('complete');
+              toast({
+                title: 'Processing complete',
+                description: 'Your DJ set has been analyzed! Check out the results.',
+              });
+              return;
+            } else if (upload?.status === 'failed') {
+              setUploadStatus('error');
+              setErrorMessage('Processing failed. Please try again.');
+              return;
+            }
+          }
+          
+          // Continue polling if still processing
+          setTimeout(pollProcessing, 2000);
+        } catch (err) {
+          console.error('Error polling status:', err);
+          // Fallback to timeout
+          setTimeout(() => {
+            setUploadStatus('complete');
+            toast({
+              title: 'Processing complete',
+              description: 'Your DJ set has been analyzed! Check out the results.',
+            });
+          }, 5000);
+        }
+      };
+
+      // Start polling after a short delay
+      setTimeout(pollProcessing, 2000);
 
     } catch (error) {
       console.error('Upload error:', error);
@@ -129,8 +167,8 @@ const UploadZone = () => {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Upload className="h-8 w-8 text-brand" />
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Upload className="h-8 w-8 text-primary" />
               </div>
               <h3 className="text-xl font-semibold text-textPrimary mb-2">
                 Drop your DJ set here
@@ -140,7 +178,7 @@ const UploadZone = () => {
               </p>
               <Button 
                 onClick={() => document.getElementById('fileInput')?.click()}
-                className="bg-brand text-textOnBrand hover:bg-brand/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 Choose File
               </Button>
@@ -156,8 +194,8 @@ const UploadZone = () => {
 
           {uploadStatus === 'uploading' && (
             <div className="text-center">
-              <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Loader2 className="h-8 w-8 text-brand animate-spin" />
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="h-8 w-8 text-primary animate-spin" />
               </div>
               <h3 className="text-xl font-semibold text-textPrimary mb-2">
                 Uploading {fileName}
@@ -174,8 +212,8 @@ const UploadZone = () => {
 
           {uploadStatus === 'processing' && (
             <div className="text-center">
-              <div className="w-16 h-16 bg-brand/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Loader2 className="h-8 w-8 text-brand animate-spin" />
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="h-8 w-8 text-primary animate-spin" />
               </div>
               <h3 className="text-xl font-semibold text-textPrimary mb-2">
                 Processing {fileName}
@@ -184,7 +222,7 @@ const UploadZone = () => {
                 Analyzing audio and detecting drops...
               </p>
               <div className="w-full bg-surface rounded-full h-2 mb-4">
-                <div className="bg-brand h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                <div className="bg-primary h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
               </div>
             </div>
           )}
@@ -203,7 +241,7 @@ const UploadZone = () => {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button 
                   onClick={handleViewResults}
-                  className="bg-brand text-textOnBrand hover:bg-brand/90"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   View Results
                 </Button>

@@ -2,14 +2,19 @@ import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import PricingSection from "@/components/PricingSection";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 const Landing = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main>
-        <HeroSection />
-        <PricingSection />
+        <div id="hero">
+          <HeroSection />
+        </div>
+        <div id="pricing">
+          <PricingSection />
+        </div>
         
         {/* CTA Section */}
         <section className="py-20 px-4 bg-background">
@@ -20,9 +25,11 @@ const Landing = () => {
             <p className="text-xl text-muted-foreground mb-8">
               Join thousands of DJs already using Clipped Set to grow their social presence.
             </p>
-            <Button size="lg" className="bg-brand text-brand-foreground hover:bg-brand/90 px-8 py-6 text-lg">
-              Get Started Now
-            </Button>
+            <Link to="/upload">
+              <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-6 text-lg">
+                Get Started Now
+              </Button>
+            </Link>
           </div>
         </section>
       </main>
