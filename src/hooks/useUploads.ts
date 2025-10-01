@@ -50,14 +50,18 @@ export const useUploads = () => {
     fetchUploads();
   }, []);
 
-  const uploadFile = async (file: File, onProgress?: (progress: number) => void) => {
+  const uploadFile = async (file: File) => {
     try {
+      console.log('Getting presigned URL...');
+      
       // Get presigned upload URL
       const { uploadId, uploadUrl, filePath } = await api.getPresignedUploadUrl(
         file.name,
         file.type,
         file.size
       );
+
+      console.log('Uploading file to storage...', { uploadId, filePath });
 
       // Upload file to storage
       const uploadResponse = await fetch(uploadUrl, {
@@ -69,20 +73,29 @@ export const useUploads = () => {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        const errorText = await uploadResponse.text();
+        console.error('Upload failed:', errorText);
+        throw new Error('Failed to upload file to storage');
       }
+
+      console.log('File uploaded successfully, completing upload...');
 
       // Complete upload
       await api.completeUpload(uploadId, filePath, file.name, file.size);
 
+      console.log('Upload completed, starting processing...');
+
       // Trigger processing
       await api.processAudio(uploadId);
+
+      console.log('Processing started');
 
       // Refresh uploads list
       await fetchUploads();
 
       return uploadId;
     } catch (err) {
+      console.error('Upload error:', err);
       throw new Error(err instanceof Error ? err.message : 'Upload failed');
     }
   };

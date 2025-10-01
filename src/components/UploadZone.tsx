@@ -69,11 +69,27 @@ const UploadZone = () => {
       setFileSize((file.size / (1024 * 1024)).toFixed(1) + ' MB');
       setUploadStatus('uploading');
       setErrorMessage('');
+      setUploadProgress(0);
+
+      console.log('Starting upload for:', file.name);
+
+      // Simulate upload progress while uploading
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 300);
 
       // Start upload
-      const resultUploadId = await uploadFile(file, (progress) => {
-        setUploadProgress(progress);
-      });
+      const resultUploadId = await uploadFile(file);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      console.log('Upload completed, starting processing:', resultUploadId);
 
       setUploadId(resultUploadId);
       setUploadStatus('processing');
@@ -84,11 +100,22 @@ const UploadZone = () => {
       });
 
       // Poll for processing completion
+      let pollAttempts = 0;
+      const maxPollAttempts = 30; // 60 seconds max
+      
       const pollProcessing = async () => {
         try {
+          pollAttempts++;
+          console.log(`Polling attempt ${pollAttempts}/${maxPollAttempts}`);
+
+          const session = await supabase.auth.getSession();
+          if (!session.data.session?.access_token) {
+            throw new Error('Not authenticated');
+          }
+
           const response = await fetch(`https://bepfythffyyzvazxakvs.supabase.co/functions/v1/get-upload-detail/${resultUploadId}`, {
             headers: {
-              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+              'Authorization': `Bearer ${session.data.session.access_token}`,
               'Content-Type': 'application/json',
             },
           });
@@ -96,6 +123,8 @@ const UploadZone = () => {
           if (response.ok) {
             const data = await response.json();
             const upload = data.upload;
+            
+            console.log('Upload status:', upload?.status);
             
             if (upload?.status === 'completed') {
               setUploadStatus('complete');
@@ -107,22 +136,36 @@ const UploadZone = () => {
             } else if (upload?.status === 'failed') {
               setUploadStatus('error');
               setErrorMessage('Processing failed. Please try again.');
+              toast({
+                title: 'Processing failed',
+                description: 'There was an error processing your file.',
+                variant: 'destructive',
+              });
               return;
             }
           }
           
-          // Continue polling if still processing
-          setTimeout(pollProcessing, 2000);
-        } catch (err) {
-          console.error('Error polling status:', err);
-          // Fallback to timeout
-          setTimeout(() => {
+          // Continue polling if still processing and haven't exceeded max attempts
+          if (pollAttempts < maxPollAttempts) {
+            setTimeout(pollProcessing, 2000);
+          } else {
+            // Timeout - assume complete
+            console.log('Polling timeout, assuming complete');
             setUploadStatus('complete');
             toast({
               title: 'Processing complete',
               description: 'Your DJ set has been analyzed! Check out the results.',
             });
-          }, 5000);
+          }
+        } catch (err) {
+          console.error('Error polling status:', err);
+          setUploadStatus('error');
+          setErrorMessage('Failed to check processing status');
+          toast({
+            title: 'Error',
+            description: 'Failed to check processing status. Please refresh the page.',
+            variant: 'destructive',
+          });
         }
       };
 
