@@ -69,6 +69,7 @@ serve(async (req) => {
       JSON.stringify({
         uploadId,
         uploadUrl: signedUrl.signedUrl,
+        token: signedUrl.token,
         filePath,
       }),
       {

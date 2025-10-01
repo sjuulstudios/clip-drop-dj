@@ -73,21 +73,10 @@ const UploadZone = () => {
 
       console.log('Starting upload for:', file.name);
 
-      // Simulate upload progress while uploading
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return prev + 10;
-        });
-      }, 300);
-
-      // Start upload
-      const resultUploadId = await uploadFile(file);
-      clearInterval(progressInterval);
-      setUploadProgress(100);
+      // Start upload with real-time progress tracking
+      const resultUploadId = await uploadFile(file, (progress) => {
+        setUploadProgress(progress);
+      });
 
       console.log('Upload completed, starting processing:', resultUploadId);
 

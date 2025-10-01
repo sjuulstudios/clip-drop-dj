@@ -50,12 +50,12 @@ export const useUploads = () => {
     fetchUploads();
   }, []);
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (file: File, onProgress?: (progress: number) => void) => {
     try {
       console.log('Getting presigned URL...');
       
       // Get presigned upload URL
-      const { uploadId, uploadUrl, filePath } = await api.getPresignedUploadUrl(
+      const { uploadId, uploadUrl, token, filePath } = await api.getPresignedUploadUrl(
         file.name,
         file.type,
         file.size
@@ -63,20 +63,47 @@ export const useUploads = () => {
 
       console.log('Uploading file to storage...', { uploadId, filePath });
 
-      // Upload file to storage
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
-      });
+      // Upload file using XMLHttpRequest for real progress tracking
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
 
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error('Upload failed:', errorText);
-        throw new Error('Failed to upload file to storage');
-      }
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            console.log(`Upload progress: ${percentComplete.toFixed(1)}%`);
+            onProgress?.(percentComplete);
+          }
+        });
+
+        // Handle completion
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            console.log('File uploaded successfully');
+            resolve();
+          } else {
+            console.error('Upload failed with status:', xhr.status, xhr.responseText);
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        });
+
+        // Handle errors
+        xhr.addEventListener('error', () => {
+          console.error('Upload error:', xhr.statusText);
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload cancelled'));
+        });
+
+        // Open connection and send file
+        xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('x-upsert', 'true');
+        // The token is embedded in the URL, no need to send separately
+        xhr.send(file);
+      });
 
       console.log('File uploaded successfully, completing upload...');
 

@@ -37,7 +37,12 @@ export const api = {
     makeAuthenticatedRequest('auth-session-validate'),
 
   // Get presigned upload URL
-  getPresignedUploadUrl: (filename: string, contentType: string, fileSize: number) =>
+  getPresignedUploadUrl: (filename: string, contentType: string, fileSize: number): Promise<{
+    uploadId: string;
+    uploadUrl: string;
+    token: string;
+    filePath: string;
+  }> =>
     makeAuthenticatedRequest('upload-presign', {
       method: 'POST',
       body: JSON.stringify({ filename, contentType, fileSize }),
