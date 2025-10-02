@@ -63,6 +63,12 @@ export const useUploads = () => {
 
       console.log('Uploading file to storage...', { uploadId, filePath });
 
+      // Construct the correct signed URL for large file uploads
+      const urlOrigin = new URL(uploadUrl).origin;
+      const signUrl = `${urlOrigin}/storage/v1/object/upload/sign/${token}/${encodeURIComponent(filePath)}`;
+      
+      console.log('Using signed URL for upload');
+
       // Upload file using XMLHttpRequest for real progress tracking
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -82,8 +88,19 @@ export const useUploads = () => {
             console.log('File uploaded successfully');
             resolve();
           } else {
-            console.error('Upload failed with status:', xhr.status, xhr.responseText);
-            reject(new Error(`Upload failed with status ${xhr.status}`));
+            console.error('Upload failed with status:', xhr.status);
+            let errorMessage = `Upload failed with status ${xhr.status}`;
+            
+            // Try to parse error response
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              errorMessage = errorData.message || errorData.error || errorMessage;
+            } catch {
+              errorMessage = xhr.responseText || errorMessage;
+            }
+            
+            console.error('Error details:', errorMessage);
+            reject(new Error(errorMessage));
           }
         });
 
@@ -98,10 +115,9 @@ export const useUploads = () => {
         });
 
         // Open connection and send file
-        xhr.open('PUT', uploadUrl, true);
+        xhr.open('PUT', signUrl, true);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.setRequestHeader('x-upsert', 'true');
-        // The token is embedded in the URL, no need to send separately
         xhr.send(file);
       });
 
