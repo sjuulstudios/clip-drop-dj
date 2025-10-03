@@ -62,12 +62,9 @@ export const useUploads = () => {
       );
 
       console.log('Uploading file to storage...', { uploadId, filePath });
-
-      // Construct the correct signed URL for large file uploads
-      const urlOrigin = new URL(uploadUrl).origin;
-      const signUrl = `${urlOrigin}/storage/v1/object/upload/sign/${token}/${encodeURIComponent(filePath)}`;
       
-      console.log('Using signed URL for upload');
+      // The uploadUrl from presign is already a complete signed URL with token as query parameter
+      console.log('Using presigned URL for upload:', uploadUrl);
 
       // Upload file using XMLHttpRequest for real progress tracking
       await new Promise<void>((resolve, reject) => {
@@ -115,7 +112,7 @@ export const useUploads = () => {
         });
 
         // Open connection and send file
-        xhr.open('PUT', signUrl, true);
+        xhr.open('PUT', uploadUrl, true);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.setRequestHeader('x-upsert', 'true');
         xhr.send(file);
