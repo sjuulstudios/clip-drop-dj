@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { supabase } from '@/integrations/supabase/client';
+import * as tus from 'tus-js-client';
 
 export interface Upload {
   id: string;
@@ -62,105 +63,50 @@ export const useUploads = () => {
         file.size
       );
 
-      console.log('Uploading file to storage...', { uploadId, filePath });
-      
-      // The uploadUrl from presign is already a complete signed URL with token as query parameter
-      console.log('Using presigned URL for upload:', uploadUrl);
+      console.log('Starting TUS resumable upload...', { uploadId, filePath });
 
-      // Ensure absolute URL and log helpful diagnostics
-      let finalUploadUrl = uploadUrl;
-      try {
-        const isAbsolute = /^https?:\/\//.test(uploadUrl);
-        if (!isAbsolute) {
-          const SUPABASE_URL = 'https://bepfythffyyzvazxakvs.supabase.co';
-          finalUploadUrl = `${SUPABASE_URL}${uploadUrl.startsWith('/') ? '' : '/'}${uploadUrl}`;
-        }
-      } catch (e) {
-        console.warn('Failed to normalize upload URL, using raw value.', e);
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
       }
 
-      console.log('Final upload URL:', finalUploadUrl, {
-        hasTokenInQuery: finalUploadUrl.includes('token='),
-        tokenPreview: token ? token.slice(0, 8) + '...' : 'none',
-        filePath,
-      });
-
-      // Try XHR upload first for real progress; fallback to SDK if token/URL issues occur
-      let uploaded = false;
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-
-          // Track upload progress
-          xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-              const percentComplete = (e.loaded / e.total) * 100;
-              console.log(`Upload progress: ${percentComplete.toFixed(1)}%`);
-              onProgress?.(percentComplete);
-            }
-          });
-
-          // Handle completion
-          xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              console.log('File uploaded successfully via XHR');
-              resolve();
-            } else {
-              console.error('Upload failed with status:', xhr.status);
-              let errorMessage = `Upload failed with status ${xhr.status}`;
-              
-              // Try to parse error response
-              try {
-                const errorData = JSON.parse(xhr.responseText);
-                errorMessage = errorData.message || errorData.error || errorMessage;
-              } catch {
-                errorMessage = xhr.responseText || errorMessage;
-              }
-              
-              console.error('Error details:', errorMessage);
-              reject(new Error(errorMessage));
-            }
-          });
-
-          // Handle errors
-          xhr.addEventListener('error', () => {
-            console.error('Upload error:', xhr.statusText);
-            reject(new Error('Network error during upload'));
-          });
-
-          xhr.addEventListener('abort', () => {
-            reject(new Error('Upload cancelled'));
-          });
-
-          // Open connection and send file
-          xhr.open('PUT', finalUploadUrl, true);
-          xhr.setRequestHeader('Content-Type', file.type);
-          xhr.setRequestHeader('x-upsert', 'true');
-          xhr.send(file);
+      // Use TUS protocol for resumable uploads (handles large files properly)
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(file, {
+          endpoint: `https://bepfythffyyzvazxakvs.supabase.co/storage/v1/upload/resumable`,
+          retryDelays: [0, 3000, 5000, 10000],
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            'x-upsert': 'true',
+          },
+          uploadDataDuringCreation: true,
+          removeFingerprintOnSuccess: true,
+          metadata: {
+            bucketName: 'dj-sets',
+            objectName: filePath,
+            contentType: file.type,
+            cacheControl: '3600',
+          },
+          chunkSize: 6 * 1024 * 1024, // 6MB chunks
+          onError: (error) => {
+            console.error('TUS upload failed:', error);
+            reject(new Error(`Upload failed: ${error.message}`));
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = (bytesUploaded / bytesTotal) * 100;
+            console.log(`Upload progress: ${percentage.toFixed(1)}%`);
+            onProgress?.(percentage);
+          },
+          onSuccess: () => {
+            console.log('TUS upload completed successfully');
+            resolve();
+          },
         });
-        uploaded = true;
-      } catch (xhrErr) {
-        const msg = xhrErr instanceof Error ? xhrErr.message.toLowerCase() : String(xhrErr).toLowerCase();
-        const tokenHint = msg.includes('token') || msg.includes("querystring must have required property 'token'");
-        if (tokenHint) {
-          console.warn('XHR upload failed due to token URL issue. Falling back to supabase-js uploadToSignedUrl.');
-          const { error: fallbackError } = await supabase.storage
-            .from('dj-sets')
-            .uploadToSignedUrl(filePath, token, file);
-          if (fallbackError) {
-            console.error('Fallback upload failed:', fallbackError.message);
-            throw new Error(`Fallback upload failed: ${fallbackError.message}`);
-          }
-          onProgress?.(100);
-          uploaded = true;
-        } else {
-          throw xhrErr;
-        }
-      }
 
-      if (!uploaded) {
-        throw new Error('Upload could not be completed');
-      }
+        // Start the upload
+        upload.start();
+      });
 
       console.log('File uploaded successfully, completing upload...');
 

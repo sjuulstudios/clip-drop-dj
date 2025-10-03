@@ -26,6 +26,20 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
+    // TEMPORARY: Allow free uploads during development/preview
+    // TODO: Re-enable subscription checking before production launch
+    logStep("Returning subscribed=true for free preview access");
+    return new Response(JSON.stringify({
+      subscribed: true,
+      product_id: 'preview_access',
+      subscription_end: null,
+      plan: 'preview'
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
+
+    /* COMMENTED OUT - Re-enable for production:
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     logStep("Stripe key verified");
@@ -96,6 +110,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
+    */
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in check-subscription", { message: errorMessage });

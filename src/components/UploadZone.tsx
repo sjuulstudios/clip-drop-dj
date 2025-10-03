@@ -119,8 +119,12 @@ const UploadZone = () => {
               setUploadStatus('complete');
               toast({
                 title: 'Processing complete',
-                description: 'Your DJ set has been analyzed! Check out the results.',
+                description: 'Your DJ set has been analyzed! Redirecting to results...',
               });
+              // Auto-navigate to results after a brief delay
+              setTimeout(() => {
+                navigate(`/results/${resultUploadId}`);
+              }, 1500);
               return;
             } else if (upload?.status === 'failed') {
               setUploadStatus('error');
@@ -138,13 +142,16 @@ const UploadZone = () => {
           if (pollAttempts < maxPollAttempts) {
             setTimeout(pollProcessing, 2000);
           } else {
-            // Timeout - assume complete
+            // Timeout - assume complete and navigate
             console.log('Polling timeout, assuming complete');
             setUploadStatus('complete');
             toast({
               title: 'Processing complete',
-              description: 'Your DJ set has been analyzed! Check out the results.',
+              description: 'Your DJ set has been analyzed! Redirecting to results...',
             });
+            setTimeout(() => {
+              navigate(`/results/${resultUploadId}`);
+            }, 1500);
           }
         } catch (err) {
           console.error('Error polling status:', err);
